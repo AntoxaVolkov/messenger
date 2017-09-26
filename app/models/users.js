@@ -60,6 +60,24 @@ function EmailError(msg) {
 RegistrationError.prototype = Object.create(Error.prototype);
 RegistrationError.prototype.constructor = RegistrationError;
 //////////////////////////////////
+function TokenError(msg) {
+  this.name = "TokenError";
+  this.message = msg || 'Token error';
+  this.code = "TOKEN_WRONG";
+}
+
+TokenError.prototype = Object.create(Error.prototype);
+TokenError.prototype.constructor = TokenError;
+//////////////////////////////////
+function LoginError(msg) {
+  this.name = "LoginError";
+  this.message = msg || 'Email or password wrong';
+  this.code = "EMAIL_OR_PASSWORD_WRONG";
+}
+
+TokenError.prototype = Object.create(Error.prototype);
+TokenError.prototype.constructor = TokenError;
+//////////////////////////////////
 
 function rand(n){ 
   var s ='', abd ='abcdefghijklmnopqrstuvwxyz0123456789', aL = abd.length;
@@ -136,17 +154,142 @@ const User = {
       );
 
   },
+  verify(id, token){
+    let connection, user;
+    return onConnect()
+      .then( // Ищем совпадение по id
+        function(conn){
+            connection = conn;
+            logdebug("[INFO ][%s][findById] fbId {user: %s}", connection['_id'], id);
+            return r.table('users').get(id).pluck('e_token', 'e_timestamp').run(connection)
+        },
+        function(err){ // Ошибка onConnect
+          throw err;
+        }
+      )
+      .then(  // Возращаем обект пользователя и закрываем соединение с БД
+        function(user){
+          if(new Date().getTime() < new Date(user.e_timestamp).getTime()){
+            return bcrypt.compare(token, user.e_token);
+          } 
+          throw new TokenError('Token expired');
+
+        },
+        function(err){ // Возращаем обект пользователя и закрываем соединение с БД
+          if(err.code != 'ERROR_DB_CONN'){
+            logerror("[ERROR][%s][findById][collect] %s:%s\n%s", connection['_id'], err.name, err.msg, err.message);
+          }
+          if(connection) connection.close();
+          throw err;
+        }
+      )
+      .then(
+        function(){
+          return r.table('users').get(id).update({e_token: null, e_timestamp:null, e_verified: true}).run(connection);
+        },
+        function(err){
+          //throw new TokenError('Invalid token');
+          throw err;
+        }
+      )
+      .then(
+        function(res){
+          console.log(res.replaced);
+          if(res.replaced) return true;
+          throw new TokenError('Error server');
+        },
+        function(err){
+          throw err;
+        }
+      );
+
+  },
+  newPass(id, token, pass){
+    let connection, user;
+    return onConnect()
+      .then( // Ищем совпадение по id
+        function(conn){
+            connection = conn;
+            logdebug("[INFO ][%s][findById] fbId {user: %s}", connection['_id'], id);
+            return r.table('users').get(id).pluck('r_token', 'r_timestamp').run(connection)
+        }
+      )
+      .then(  // Возращаем обект пользователя и закрываем соединение с БД
+        function(user){
+          if(new Date().getTime() < new Date(user.e_timestamp).getTime()){
+            return bcrypt.compare(token, user.r_token);
+          } 
+          throw new TokenError('Token expired');
+
+        }
+      )
+      .then(
+        function (){
+          return bcrypt.hash(pass, 10);
+        }
+      )
+      .then(
+        function(hash){
+          return r.table('users').get(id).update({r_token: null, r_timestamp:null, password: hash}).run(connection);
+        }
+      )
+      .then(
+        function(res){
+          console.log(res.replaced);
+          if(res.replaced) return true;
+          throw new TokenError('Error server');
+        }
+      )
+      .catch(function (err){
+        throw err;
+      });
+
+  },
+  reset(email){
+    let uid, r_token, r_timestamp,connection;
+    return this.identification(email)
+      .then(function(u){
+        uid = u.id;
+        user = u;
+        r_token = rand(32);
+        return onConnect();
+      }).then(function(conn){
+        connection = conn;
+        return bcrypt.hash(r_token, 10);
+      }).then(function(hashToken){
+        r_timestamp = new Date(new Date().getTime() + 1000 * 60 * 60 *24);
+        return r.table('users').get(uid).update({r_token: hashToken, r_timestamp:r_timestamp}).run(connection);
+      }).then(function(res){
+        if(res.replaced){
+          let link = config.server.protocol + config.server.host + ':' + config.server.port + '/reset/' + uid + '/' + r_token;
+          let msg = {
+            to: user.email,
+            subject: 'Подтверждение почты ✔',
+            html: '<p>Доброго времени суток, ' +  user.name + '!</p>'
+                + '<p>Ваша ссылка для подтверждения регистрации в AVMesseger:</p>'
+                + '<p><a href="'+link+'">'+link+'</a></p>'
+                + '<p>Если вы не регистрировались в нашем сервисе, то просто удалите данное письмо.</p>'
+          }
+          return mail.sendMail(msg);
+        }
+        throw new TokenError('Error creted password token reset');
+      }).then(function(){
+        return true;
+      }).catch(function (err){
+        console.log(err);
+        throw err;
+      });
+  },
   authentication(password, user){
     return bcrypt.compare(password, user.password)
       .then(function(res){
-        // Поправить логер, не от дб
         logdebug("[INFO ][authentication] User {id: %s}", user.id);
-        return true;
+        if(res) return true;
+        throw new LoginError();
       })
       .catch(function(err){
-        // Поправить логер, не от дб
         logerror("[ERROR][authentication][compare] %s:$s\n%s", err.name );
-        return false;
+        throw err;
       });
   },
   saveUser(data){

@@ -26,7 +26,7 @@ module.exports = function(passport){
         requiresLogin(req, res, next) {
             logdebug("[INFO][Auth][requiresLogin] is %s",req.isAuthenticated() );
             if (req.isAuthenticated()){
-                if(!req.user.e_verified) return res.status(401).json({auth:req.isAuthenticated(), verified:req.user.e_verified});
+                if(!req.user.e_verified) return res.status(401).json({auth:req.isAuthenticated(), not_verified:!req.user.e_verified});
                 return next();
             }
             res.status(401).json({auth:false});
@@ -37,7 +37,7 @@ module.exports = function(passport){
                 if (!user) { return res.json({auth:false}); }
                 req.logIn(user, function(err) {
                     if (err) { return res.json(err); }
-                    return res.json({auth:req.isAuthenticated(), verified: user.e_verified});
+                    return res.json({auth:req.isAuthenticated(), not_verified: !user.e_verified});
                 });
                 //return next();
             })(req, res, next);

@@ -10,6 +10,7 @@ const server = require('http').createServer(app);
 const io = require('socket.io').listen(server);
 const path = require('path');
 
+app.set("view engine", "hbs");
 
 require('./config/passport')(passport);
 require('./config/express')(app, passport);

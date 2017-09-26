@@ -1,12 +1,10 @@
 const User = require('../app/models/users');
-console.log(User)
-console.log(User.findById('49de8610-67aa-4514-95a3-a523c273ed9d').then(
+User.authentication('23424','$2a$10$5An4XsifBrduC7Wcbtr.lOM7I.Aq8k2gZMRjIB2L5nVxGqEZVdMO.').then(
     function(user){
-        console.log(user);
-        return user;
+        console.log(true);
     },
     function(err){
         throw err;
     }
-));
+);
 

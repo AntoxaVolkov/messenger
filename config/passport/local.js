@@ -8,18 +8,39 @@ module.exports = new LocalStrategy({
     passwordField: 'password'
   },
   function(email, password, done) {
+    let user;
     return Users.identification(email)
       .then(
-        function(user){
-          if (!user) {
-            return done(null, false, { message: 'Incorrect username.' });
+        function(u){
+          if (!u) {
+            done(null, false, { message: 'Incorrect username.' });
           }
-          return done(null, user);
+          user = u;
+          console.log(user)
+          return Users.authentication(password, u);
         },
-        function(err){
-          return done(err);
+        function(){
+          done(err);
         }
       )
+      .then(
+        function(){
+          console.log('auth true')
+          return Users.findById(user.id)
+        },
+        function(err){
+          done(err);
+        }
+      )
+      .then(
+        function(u){
+          console.log(u)
+           done(null, u);
+        },
+        function(err){
+            done(err);
+        }
+      );
 
     /*Users.identification(email, function (err, user) {
       console.log('<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>',user,err);
