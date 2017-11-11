@@ -16,7 +16,7 @@ module.exports = new LocalStrategy({
             done(null, false, { message: 'Incorrect username.' });
           }
           user = u;
-          console.log(user)
+          //console.log(user)
           return Users.authentication(password, u);
         },
         function(){
@@ -25,7 +25,7 @@ module.exports = new LocalStrategy({
       )
       .then(
         function(){
-          console.log('auth true')
+          //console.log('auth true')
           return Users.findById(user.id)
         },
         function(err){
@@ -34,7 +34,7 @@ module.exports = new LocalStrategy({
       )
       .then(
         function(u){
-          console.log(u)
+          //console.log(u)
            done(null, u);
         },
         function(err){

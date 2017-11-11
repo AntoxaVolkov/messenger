@@ -15,16 +15,21 @@ module.exports = function (app, passport) {
 
     apiRouter.post('/reg', users.create);
     apiRouter.post('/reset', users.reset);
-    apiRouter.post('/reset/:id/:token/:pass', users.reset);
+    apiRouter.post('/ereset', auth.requiresLoginWithoutVerify, users.verifyReset);
+    //apiRouter.post('/reset/:id/:token/:pass', users.reset);
     apiRouter.post('/login',auth.authenticate, users.login);
     apiRouter.get('/logout', users.logout);
+    apiRouter.get('/me', auth.requiresLogin, users.me);
     apiRouter.get('/test', auth.requiresLogin, users.test);
+    
 
-
+    apiRouter.get('*', function(req,res){
+        res.status(404).json({massege:'Not found'});
+    });
     app.use("/api", apiRouter);
 
     app.get("/verify/:id/:token",users.verify);
-    app.get('/reset/:id/:token', users.reset);
-    app.get('/reset', users.reset);
+    app.get('/reset/:id/:token', users.resetStart);
+    app.get('/reset', users.resetStart);
 
 }

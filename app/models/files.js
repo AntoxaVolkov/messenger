@@ -73,7 +73,7 @@ const Files = {
                         if (err){
                             reject(err);
                         } else {
-                            resolve({url:'/photo/mini/'+uniqName});
+                            resolve({url:'/photos/mini/'+uniqName, file:uniqName});
                         }
                     });
                 }) 

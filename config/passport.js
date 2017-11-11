@@ -5,8 +5,10 @@ const local = require('./passport/local');
 module.exports = function (passport) {
 
   // serialize sessions
+  /*
   passport.serializeUser((user, done) => done(null, user.id));
   passport.deserializeUser((id, done) => {
+    console.log('deserializeUser');
     Users.findById(id)
       .then(function(user){
         done(null,user)
@@ -15,7 +17,7 @@ module.exports = function (passport) {
         done(err);
       });
   });
-
+*/
   // use these strategies
   passport.use(local);
 };

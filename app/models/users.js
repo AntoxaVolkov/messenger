@@ -22,7 +22,8 @@ const NewUser = function(data){
     'r_token' : null,
     'e_timestamp' : null,
     'r_timestamp' : null,
-    'o_timestamp' : null
+    'o_timestamp' : null,
+    'contacts' : new Array()
   }
 
   user.name = data.name;
@@ -154,6 +155,31 @@ const User = {
       );
 
   },
+  getUserInfo(id){
+    let connection;
+    return onConnect()
+      .then( // Ищем совпадение по id
+        function(conn){
+            connection = conn;
+            logdebug("[INFO ][%s][findById] fbId {user: %s}", connection['_id'], id);
+            return r.table('users').get(id).pluck('id','name', 'lastname', 'email', 'photo').run(connection)
+        }
+      )
+      .then( 
+        function(user){
+          if(connection) connection.close();
+          return user;
+
+        },
+        function(err){
+          if(err.code != 'ERROR_DB_CONN'){
+            logerror("[ERROR][%s][findById][collect] %s:%s\n%s", connection['_id'], err.name, err.msg, err.message);
+          }
+          throw err;
+        }
+      );
+
+  },
   verify(id, token){
     let connection, user;
     return onConnect()
@@ -162,12 +188,9 @@ const User = {
             connection = conn;
             logdebug("[INFO ][%s][findById] fbId {user: %s}", connection['_id'], id);
             return r.table('users').get(id).pluck('e_token', 'e_timestamp').run(connection)
-        },
-        function(err){ // Ошибка onConnect
-          throw err;
         }
       )
-      .then(  // Возращаем обект пользователя и закрываем соединение с БД
+      .then(
         function(user){
           if(new Date().getTime() < new Date(user.e_timestamp).getTime()){
             return bcrypt.compare(token, user.e_token);
@@ -175,7 +198,7 @@ const User = {
           throw new TokenError('Token expired');
 
         },
-        function(err){ // Возращаем обект пользователя и закрываем соединение с БД
+        function(err){ 
           if(err.code != 'ERROR_DB_CONN'){
             logerror("[ERROR][%s][findById][collect] %s:%s\n%s", connection['_id'], err.name, err.msg, err.message);
           }
@@ -188,7 +211,6 @@ const User = {
           return r.table('users').get(id).update({e_token: null, e_timestamp:null, e_verified: true}).run(connection);
         },
         function(err){
-          //throw new TokenError('Invalid token');
           throw err;
         }
       )
@@ -207,16 +229,16 @@ const User = {
   newPass(id, token, pass){
     let connection, user;
     return onConnect()
-      .then( // Ищем совпадение по id
+      .then( 
         function(conn){
             connection = conn;
             logdebug("[INFO ][%s][findById] fbId {user: %s}", connection['_id'], id);
             return r.table('users').get(id).pluck('r_token', 'r_timestamp').run(connection)
         }
       )
-      .then(  // Возращаем обект пользователя и закрываем соединение с БД
+      .then(  
         function(user){
-          if(new Date().getTime() < new Date(user.e_timestamp).getTime()){
+          if(new Date().getTime() < new Date(user.r_timestamp).getTime()){
             return bcrypt.compare(token, user.r_token);
           } 
           throw new TokenError('Token expired');
@@ -264,11 +286,11 @@ const User = {
           let link = config.server.protocol + config.server.host + ':' + config.server.port + '/reset/' + uid + '/' + r_token;
           let msg = {
             to: user.email,
-            subject: 'Подтверждение почты ✔',
+            subject: 'Подтверждение сброса пароля ✔',
             html: '<p>Доброго времени суток, ' +  user.name + '!</p>'
-                + '<p>Ваша ссылка для подтверждения регистрации в AVMesseger:</p>'
+                + '<p>Ваша ссылка для подтверждения сброса пароля в AVMesseger:</p>'
                 + '<p><a href="'+link+'">'+link+'</a></p>'
-                + '<p>Если вы не регистрировались в нашем сервисе, то просто удалите данное письмо.</p>'
+                + '<p>Если вы не сбрасывали пароль, то удалите данное письмо.</p>'
           }
           return mail.sendMail(msg);
         }
@@ -375,6 +397,151 @@ const User = {
           throw err;
         }
       );
+  },
+  generatedEmailVerifyCode(user){
+
+    let e_token = rand(32);
+    let connection;
+    return onConnect()
+      .then(function(conn){
+        connection = conn;
+        return bcrypt.hash(e_token, 10);
+      })
+      .then(function(hashToken){
+        return r.table('users').get(user.id).update({
+          e_token: hashToken,
+          e_timestamp: new Date(new Date().getTime() + 1000 * 60 * 60 *24)
+        }).run(connection);
+      }).then(function(res){
+        uid = user.id
+        connection.close();
+        let link = config.server.protocol + config.server.host + ':' + config.server.port + '/verify/' + uid + '/' + e_token;
+        let msg = {
+          to: user.email,
+          subject: 'Подтверждение почты ✔',
+          html: '<p>Доброго времени суток, ' +  user.name + '!</p>'
+              + '<p>Ваша ссылка для подтверждения регистрации в AVMesseger:</p>'
+              + '<p><a href="'+link+'">'+link+'</a></p>'
+              + '<p>Если вы не регистрировались в нашем сервисе, то просто удалите данное письмо.</p>'
+        }
+        return mail.sendMail(msg);
+      })
+      .then(function(){
+        return true;
+      })
+      .catch(function(err){
+        if(connection) connection.close();
+        throw err;
+      });
+  },
+  findByNameOrLastName(data){
+    let connection, found = data.found, query = data.query.split(' ');
+    return onConnect()
+      .then(function(conn){
+        connection = conn;
+        logdebug("[INFO ][%s][findByNameOrLastName] {str: %s}", connection['_id'], query);
+        return r.table('users').filter(function(doc){
+            //Доделать поиск по нескольким словам
+            if(query.length == 1){
+                return doc('name')
+                  .match('(?i)'+query[0])
+                  .or(doc('lastname')
+                    .match('(?i)'+query[0]))
+                  .or(doc('email')
+                    .match('(?i)'+query[0]))
+                  .and(r.expr(found).filter(function(row){
+                    return row.eq(doc('id'))
+                  }).count().eq(0))
+            }else{
+                let result = true;
+                for(let i = 0; i < query.length; i++ ){
+                    result = result && (doc('name')
+                      .match('(?i)'+query[i])
+                      .or(doc('lastname')
+                        .match('(?i)'+query[i])))
+                        .and(r.expr(found).filter(function(row){
+                          return row.eq(doc('id'))
+                        }).count().eq(0))
+                }
+                return result;
+            }
+            //return doc('name').match('(?i)'+str).or(doc('lastname').match('(?i)'+str)).or(doc('email').match('(?i)'+str))
+        })
+        .limit(10)
+        .pluck('id','name', 'lastname', 'email', 'photo', 'e_verified').run(connection)
+      })
+      .then(
+        function(cursor){
+          if(connection) connection.close();
+          return cursor.toArray();
+
+        },
+        function(err){
+          if(err.code != 'ERROR_DB_CONN'){
+            logerror("[ERROR][%s][findByNameOrLastName][collect] %s:%s\n%s", connection['_id'], err.name, err.msg, err.message);
+          }
+          throw err;
+        }
+      )
+      .then(function(users){
+         if(connection) connection.close();
+         return users;
+      });
+
+  },
+  getContacts(uid){
+    let connection;
+    return onConnect()
+      .then(
+        function(conn){
+            connection = conn;
+            logdebug("[INFO ][%s][getContacts] {user: %s}", connection['_id'], uid);
+            return r.table('users').get(uid)('contacts').map(function(contact){
+              return r.table('users').get(contact).pluck('id','name', 'lastname', 'email', 'photo');
+            }).run(connection)
+        }
+      )
+      .then(
+        function(contacts){
+          if(connection) connection.close();
+          return contacts;
+
+        },
+        function(err){ 
+          if(err.code != 'ERROR_DB_CONN'){
+            logerror("[ERROR][%s][getContacts][collect] %s:%s\n%s", connection['_id'], err.name, err.msg, err.message);
+          }
+          throw err;
+        }
+      );
+  },
+  addContact(cid,uid){
+    let connection;
+    return onConnect()
+      .then(function(conn){
+        connection = conn;
+        logdebug("[INFO ][%s][addContact] {user: %s}", connection['_id'], uid);
+        return r.table('users')
+          .get(uid)
+          .update({contacts:r.row('contacts').prepend(cid)})
+          .run(connection)
+      })
+  },
+  removeContact(cid,uid){
+    let connection;
+    return onConnect()
+      .then(function(conn){
+        connection = conn;
+        logdebug("[INFO ][%s][removeContact] {user: %s}", connection['_id'], uid);
+        return r.table('users')
+          .get(uid)
+          .update({contacts:r.row('contacts').deleteAt(r.row('contacts').offsetsOf(cid)(0))})
+          .run(connection)
+      })
+      .then(function(res){
+        console.log(res);
+        return true;
+      })
   }
 
 }

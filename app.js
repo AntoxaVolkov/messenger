@@ -15,6 +15,7 @@ app.set("view engine", "hbs");
 require('./config/passport')(passport);
 require('./config/express')(app, passport);
 require('./config/routers')(app, passport);
+require('./config/socketio')(io);
 
 
 
